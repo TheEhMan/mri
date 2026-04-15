@@ -1,0 +1,21 @@
+{
+  "volume_total": "The total tumor volume is **136.8 mL** with a maximum diameter of **138 mm**. This is a large (>100 mL) tumor. (Atlas-verified measurement)",
+  "volume_necrotic": "The necrotic core (NCR, BraTS label 1) occupies **5.0 mL** (4% of total tumor volume). Necrotic tissue represents the central dead/liquefied core, typically reflecting high-grade malignancy.",
+  "volume_edema": "Peritumoral edema (ED, BraTS label 2) occupies **104.7 mL** (77% of total volume). This represents the T2-hyperintense infiltrative zone surrounding the tumor core.",
+  "volume_enhancing": "The enhancing tumor (ET, BraTS label 3) occupies **27.1 mL** (20% of total volume). This represents the actively proliferating, blood-brain-barrier-disrupting component seen on T1c.",
+  "volume_diameter": "The maximum tumor diameter is **138 mm** (13.8 cm). This is measured as the longest axis across the tumor mass in the registered MRI space.",
+  "region_location": "The tumor is primarily located in the **left hemisphere** (L=99% / R=1% of lateralised volume), predominantly involving the **Parietal lobe**, with a total volume of 136.8 mL. The most involved atlas regions are: Parietal_Sup_L, Occipital_Mid_L, Precuneus_L, Angular_L, Postcentral_L. Active proximity flags: NearMotorCortex, NearWernickes, NearDeepGray, NearVentricle, NearInsula. (Atlas-verified data)",
+  "region_enhancing": "The dominant tumor regions by atlas overlap are: **Parietal_Sup_L, Occipital_Mid_L, Precuneus_L, Angular_L, Postcentral_L**. These represent areas of maximum tumor burden including the enhancing component. (Atlas-verified \u2014 compartment-level ET regions unavailable)",
+  "region_edema": "Edema regions follow the general tumor distribution: Parietal_Sup_L, Occipital_Mid_L, Precuneus_L, Angular_L, Postcentral_L, Occipital_Sup_L, Precentral_L, SupraMarginal_L. The edema typically extends into regions adjacent to the core tumor mass. (Compartment-level ED breakdown unavailable; overall regions shown)",
+  "region_hemisphere": "The tumor is primarily in the **left hemisphere** (99% of lateralised volume). The contralateral hemisphere has only 1% involvement. (Atlas-verified)",
+  "region_midline": "**No**, the tumor does not significantly cross the midline. It is predominantly confined to the left hemisphere (99% left / 1% right). (Atlas-verified)",
+  "region_eloquent": "**Yes**, the tumor is near eloquent cortex: primary motor cortex (Precentral/Rolandic); Wernicke's area (superior temporal gyrus); insular cortex. This proximity significantly affects surgical approach and expected functional outcomes. (Atlas proximity flags)",
+  "region_motor": "**Yes**, the tumor is near the motor cortex (Precentral / Rolandic operculum regions are involved). This carries significant risk of motor deficit and limits aggressive surgical resection. (Atlas: NearMotorCortex flag raised)",
+  "region_language": "**Yes**, the tumor is near language-critical areas: Wernicke's area (superior temporal gyrus). This raises significant risk of expressive or receptive aphasia and must be considered in the surgical plan. (Atlas proximity flags raised)",
+  "morph_margins": "[DRY-RUN] Model inference placeholder for Q14: Tumor margins.",
+  "morph_mass": "[DRY-RUN] Model inference placeholder for Q15: Mass effect.",
+  "morph_hetero": "[DRY-RUN] Model inference placeholder for Q16: Signal heterogeneity.",
+  "morph_cystic": "[DRY-RUN] Model inference placeholder for Q17: Cystic degeneration.",
+  "clin_location": "[DRY-RUN] Model inference placeholder for Q18: Clinical concern.",
+  "clin_deficits": "[DRY-RUN] Model inference placeholder for Q19: Functional deficits."
+}

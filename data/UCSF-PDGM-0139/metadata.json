@@ -1,0 +1,26 @@
+{
+  "pid": "UCSF-PDGM-0139",
+  "accuracy_pct": 94.1,
+  "total_volume_ml": 136.81,
+  "ncr_volume_ml": 4.97,
+  "ed_volume_ml": 104.72,
+  "et_volume_ml": 27.12,
+  "max_diameter_mm": 138.2,
+  "hemisphere": "left",
+  "left_pct": 99.1,
+  "right_pct": 0.9,
+  "crosses_midline": false,
+  "primary_lobe": "Parietal",
+  "proximity_flags": {
+    "NearMotorCortex": true,
+    "NearBrocas": false,
+    "NearWernickes": true,
+    "NearDeepGray": true,
+    "NearVentricle": true,
+    "NearInsula": true
+  },
+  "n_regions": 77,
+  "orthoview_image": "UCSF-PDGM-0139_orthoview_centered.png",
+  "seg_image": "segmentation_multiclass.png",
+  "reg_image": "registration_quality.png"
+}
