@@ -648,3 +648,26 @@ body.light-theme #theme-toggle {
   background: #f8fafc;
   color: #1e293b;
 }
+
+/* Decorative, extremely subtle creator signature designed to look like a UI element */
+.creator-sig {
+  position: fixed;
+  bottom: 80px; /* Start slightly higher so it doesn't clip */
+  left: 12px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.08); /* Fainter */
+  filter: blur(0.8px); /* Blurs the text slightly */
+  transform: rotate(-90deg);
+  transform-origin: left bottom;
+  pointer-events: none;
+  z-index: 9999;
+  user-select: none;
+  letter-spacing: 28px; /* Greatly spread out */
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+body.light-theme .creator-sig {
+  color: rgba(0, 0, 0, 0.04);
+}

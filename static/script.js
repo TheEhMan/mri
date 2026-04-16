@@ -1,17 +1,6 @@
-
-
 /* webapp_v3 — script.js (3-section viewer + Q&A) */
 "use strict";
-const MRI_BASE = "/mri";
 
-const API = {
-  subjects: () => `${MRI_BASE}/api/subjects/`,
-  subject: (pid) => `${MRI_BASE}/api/subject/${pid}/`,
-  sliceInfo: (pid, space = "native") => `${MRI_BASE}/api/slice_info/${pid}/?space=${space}`,
-  slice: (pid, view, idx, params = "") => `${MRI_BASE}/api/slice/${pid}/${view}/${idx}/${params ? `?${params}` : ""}`,
-  qa: (pid, qid) => `${MRI_BASE}/api/qa/${pid}/${qid}/`,
-  report: (pid) => `${MRI_BASE}/report/${pid}/`,
-};
 // ─── Theme Toggle ─────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   const toggleBtn = document.getElementById('theme-toggle');
@@ -95,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Subjects ────────────────────────────────────────────────────────────────
 async function loadSubjects() {
   try {
-    const subjects = await (await fetch(API.subjects())).json();
+    const subjects = await (await fetch('/api/subjects')).json();
     const list = $('subject-cards');
     list.innerHTML = '';
     subjects.forEach((s, i) => {
@@ -128,7 +117,7 @@ async function selectSubject(pid, cardEl) {
   clearAutoPlay();
 
   try {
-    const data = await (await fetch(API.subject(pid))).json();
+    const data    = await (await fetch(`/api/subject/${pid}`)).json();
     currentImages = data.images || {};
 
     updateStats(data.meta);
@@ -277,7 +266,7 @@ async function initRegPanels(pid) {
   regState.projection.cache = {};
 
   // Get dimensions of the registered T1
-  const info = await fetch(API.sliceInfo(pid, 'registered')).then(r => r.json()).catch(() => null);
+  const info = await fetch(`/api/slice_info/${pid}?space=registered`).then(r => r.json()).catch(() => null);
   if (!info) return;
 
   const mid = info.mid_axial;
@@ -316,7 +305,7 @@ async function loadRegSlice(panel, idx) {
   let url = regState[panel].cache[key];
   if (!url) {
     try {
-      const resp = await fetch(API.slice(currentPid, 'axial', idx, params));
+      const resp = await fetch(`/api/slice/${currentPid}/axial/${idx}?${params}`);
       if (!resp.ok) return;
       url = URL.createObjectURL(await resp.blob());
       regState[panel].cache[key] = url;
@@ -397,7 +386,7 @@ function renderReport(report, meta) {
 
   const btnView = $('btn-view-report');
   if (btnView && meta && meta.pid) {
-    btnView.href = API.report(meta.pid);
+    btnView.href = `/report/${meta.pid}`;
     btnView.style.opacity = '1';
     btnView.style.pointerEvents = 'auto';
   }
@@ -466,7 +455,7 @@ async function loadPanelSlice(view, idx) {
   let url = sliceCache[key];
   if (!url) {
     try {
-      const resp = await fetch(API.slice(currentPid, view, idx, `seg=${segParam}`));
+      const resp = await fetch(`/api/slice/${currentPid}/${view}/${idx}?seg=${segParam}`);
       if (!resp.ok) return;
       url = URL.createObjectURL(await resp.blob());
       sliceCache[key] = url;
@@ -533,7 +522,7 @@ async function initAllPanels(pid) {
 
   // Fetch volume dimensions
   try {
-    sliceInfo = await (await fetch(API.sliceInfo(pid))).json();
+    sliceInfo = await (await fetch(`/api/slice_info/${pid}`)).json();
   } catch { return; }
 
   // Set mid-slices for each view
@@ -617,7 +606,7 @@ async function askQuestion(qId, qLabel, cat) {
   const typingId = appendTypingIndicator(cat);
 
   const [resp] = await Promise.all([
-    fetch(API.qa(currentPid, qId)).then(r => r.json()).catch(() => ({ answer: 'Error.' })),
+    fetch(`/api/qa/${currentPid}/${qId}`).then(r=>r.json()).catch(()=>({answer:'Error.'})),
     sleep(getDelay(cat)),
   ]);
 
