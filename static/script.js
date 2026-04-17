@@ -58,7 +58,6 @@ let activeView    = 'axial';   // which panel the slider controls
 let sliceInfo     = null;
 let sliceCache    = {};
 let autoPlayTimer = null;
-let showSeg       = true;       // segmentation overlay on by default
 
 // ─── App state ────────────────────────────────────────────────────────────────
 let currentPid    = null;
@@ -74,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSubjects();
   setupNiftiCells();
   setupSlider();
-  setupSegToggle();
   setupRegSliders();
   setupCategoryButtons();
   $('back-to-categories').addEventListener('click', showCategories);
@@ -294,10 +292,9 @@ async function initRegPanels(pid) {
 async function loadRegSlice(panel, idx) {
   if (!currentPid) return;
   const isBrain = panel === 'brain';
-  // projection: seg=1&viz=multicolor
   const params  = isBrain
     ? `space=registered&seg=0`
-    : `space=registered&seg=1&viz=multicolor`;
+    : `space=registered&viz=projection`;
   const key     = `${currentPid}_reg_${panel}_${idx}`;
   const imgEl   = $(`reg-slice-${panel}`);
   const labelEl = $(`reg-label-${panel}`);
@@ -305,7 +302,8 @@ async function loadRegSlice(panel, idx) {
   let url = regState[panel].cache[key];
   if (!url) {
     try {
-      const resp = await fetch(`/api/slice/${currentPid}/axial/${idx}?${params}`);
+      const ts = Date.now();
+      const resp = await fetch(`/api/slice/${currentPid}/axial/${idx}?${params}&_t=${ts}`);
       if (!resp.ok) return;
       url = URL.createObjectURL(await resp.blob());
       regState[panel].cache[key] = url;
@@ -448,14 +446,14 @@ async function stepSlice(view, delta) {
 
 async function loadPanelSlice(view, idx) {
   if (!currentPid) return;
-  const segParam = showSeg ? '1' : '0';
-  const key      = `${currentPid}_${view}_${idx}_seg${segParam}`;
-  const imgEl    = $(`nslice-${view}`);
+  const key   = `${currentPid}_${view}_${idx}`;
+  const imgEl = $(`nslice-${view}`);
 
   let url = sliceCache[key];
   if (!url) {
     try {
-      const resp = await fetch(`/api/slice/${currentPid}/${view}/${idx}?seg=${segParam}`);
+      const ts = Date.now();
+      const resp = await fetch(`/api/slice/${currentPid}/${view}/${idx}?_t=${ts}`);
       if (!resp.ok) return;
       url = URL.createObjectURL(await resp.blob());
       sliceCache[key] = url;
@@ -503,19 +501,7 @@ function setupSlider() {
   });
 }
 
-function setupSegToggle() {
-  const btn = $('seg-toggle-btn');
-  if (!btn) return;
-  btn.addEventListener('click', async () => {
-    showSeg = !showSeg;
-    btn.classList.toggle('seg-on',  showSeg);
-    btn.classList.toggle('seg-off', !showSeg);
-    btn.querySelector('.seg-dot').style.background = showSeg ? 'var(--teal)' : 'var(--text-dim)';
-    btn.childNodes[btn.childNodes.length - 1].textContent = showSeg ? ' SEG ON' : ' SEG OFF';
-    // Reload all 3 panels with new seg state
-    await Promise.all(VIEWS.map(v => loadPanelSlice(v, panelState[v].slice)));
-  });
-}
+
 
 async function initAllPanels(pid) {
   sliceCache = {};

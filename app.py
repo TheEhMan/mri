@@ -1,23 +1,20 @@
 """
-webapp_v3/app.py
+webapp_v4/app.py
 ================
-Lean Flask backend for the hardcoded demo webapp.
-No pipeline, no sessions — serves pre-generated data + live NIfTI slices.
+Ultra-lean Flask backend for the static demo webapp.
+All MRI slices are pre-baked as static PNGs by prebake_slices.py.
+No NIfTI loading, no numpy, no Pillow — pure file serving.
 """
 
-import io
 import re
 import json
-import numpy as np
-import nibabel as nib
 from pathlib import Path
-from PIL import Image
-from flask import Flask, jsonify, render_template, send_from_directory, Response
+from flask import Flask, jsonify, render_template, send_from_directory, Response, request
 
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 WEBAPP_DIR   = Path(__file__).parent.resolve()
 DATA_DIR     = WEBAPP_DIR / 'data'
-TEST_OUTPUTS = WEBAPP_DIR / 'test_output'
+SLICES_DIR   = WEBAPP_DIR / 'static' / 'slices'   # pre-baked PNG store
 
 app = Flask(
     __name__,
@@ -42,107 +39,38 @@ ACCURACY_MAP = {
     'UCSF-PDGM-0044': 88.2,
 }
 
-# ─── NIfTI volume cache ───────────────────────────────────────────────────────
-_vol_cache: dict = {}
-_png_cache: dict = {}
+# ─── Slice dimension cache (read from baked folder, zero NIfTI I/O) ──────────────────
+_dim_cache: dict = {}
 
 
-def _load_vol(pid: str, kind: str, space: str = 'native'):
-    """Load and cache a NIfTI volume.
-    space='native'     -> _T1_oriented.nii.gz  / _seg_oriented.nii.gz
-    space='registered' -> _T1_registered.nii.gz / _seg_registered.nii.gz
+def _get_slice_dims(pid: str, subfolder: str = ''):
+    """Count pre-baked PNGs to determine volume dimensions for a given subfolder.
+    subfolder=''                  -> native space (slices/<pid>/<view>/)
+    subfolder='registered_brain'  -> registered pure T1
+    subfolder='registered_projection' -> registered + green overlay
+    Returns dict with axial/coronal/sagittal slice counts, or None if not baked.
     """
-    key = f'{pid}_{kind}_{space}'
-    if key not in _vol_cache:
-        reg_dir = TEST_OUTPUTS / pid / 'registration'
-        if space == 'registered':
-            fname = f'{pid}_T1_registered.nii.gz' if kind == 't1' else f'{pid}_seg_registered.nii.gz'
+    cache_key = f'{pid}/{subfolder}'
+    if cache_key in _dim_cache:
+        return _dim_cache[cache_key]
+    dims = {}
+    all_present = True
+    for view in ('axial', 'coronal', 'sagittal'):
+        if subfolder:
+            view_dir = SLICES_DIR / pid / subfolder / view
         else:
-            fname = f'{pid}_T1_oriented.nii.gz' if kind == 't1' else f'{pid}_seg_oriented.nii.gz'
-        path = reg_dir / fname
-        if path.exists():
-            img             = nib.load(str(path))
-            _vol_cache[key] = (np.squeeze(img.get_fdata()), img.header.get_zooms()[:3])
+            view_dir = SLICES_DIR / pid / view
+        if view_dir.exists():
+            count = len(list(view_dir.glob('*.png')))
+            dims[view] = count
         else:
-            _vol_cache[key] = None
-    return _vol_cache.get(key)
-
-
-def _render_slice(t1_arr, voxel_sz, seg_arr, view: str, idx: int,
-                  overlay_mode: str = 'multicolor') -> bytes:
-    """Extract one slice, overlay segmentation, return PNG bytes.
-    overlay_mode='multicolor' -> NCR=red, ED=yellow, ET=cyan
-    overlay_mode='projection' -> all labels = bright green (v2 Tumor Projection style)
-    """
-    # Extract 2-D slices
-    if view == 'axial':
-        idx    = max(0, min(idx, t1_arr.shape[2] - 1))
-        sl_t1  = t1_arr[:, :, idx].T
-        sl_seg = seg_arr[:, :, idx].T if seg_arr is not None else None
-        asp    = voxel_sz[1] / voxel_sz[0]
-    elif view == 'coronal':
-        idx    = max(0, min(idx, t1_arr.shape[1] - 1))
-        sl_t1  = t1_arr[:, idx, :].T
-        sl_seg = seg_arr[:, idx, :].T if seg_arr is not None else None
-        asp    = voxel_sz[2] / voxel_sz[0]
-    else:  # sagittal
-        idx    = max(0, min(idx, t1_arr.shape[0] - 1))
-        sl_t1  = t1_arr[idx, :, :].T
-        sl_seg = seg_arr[idx, :, :].T if seg_arr is not None else None
-        asp    = voxel_sz[2] / voxel_sz[1]
-
-    # Percentile windowing for brain contrast
-    lo, hi = np.percentile(t1_arr[t1_arr > 0], (1, 99)) if t1_arr.max() > 0 else (0, 1)
-    sl_t1  = np.clip((sl_t1 - lo) / max(hi - lo, 1e-6), 0, 1)
-    gray   = (sl_t1 * 255).astype(np.uint8)
-
-    # Flip so superior is up
-    gray = np.flipud(gray)
-    if sl_seg is not None:
-        sl_seg = np.flipud(sl_seg)
-
-    # RGB from gray
-    rgb = np.stack([gray, gray, gray], axis=-1)
-
-    # Segmentation overlay
-    if sl_seg is not None:
-        if overlay_mode == 'projection':
-            # Unified bright green — all non-zero labels become one green mask
-            mask  = sl_seg.astype(np.int32) > 0
-            alpha = 0.62
-            r, g, b = 50, 220, 80   # bright #32DC50
-            if mask.any():
-                rgb[mask, 0] = np.clip(rgb[mask, 0] * (1 - alpha) + r * alpha, 0, 255).astype(np.uint8)
-                rgb[mask, 1] = np.clip(rgb[mask, 1] * (1 - alpha) + g * alpha, 0, 255).astype(np.uint8)
-                rgb[mask, 2] = np.clip(rgb[mask, 2] * (1 - alpha) + b * alpha, 0, 255).astype(np.uint8)
-        else:
-            # Multicolor: NCR=red, ED=yellow, ET=cyan
-            SEG_COLORS = {
-                1: (220,  55,  55, 0.55),   # NCR red
-                2: (240, 190,  40, 0.50),   # ED  yellow
-                3: ( 40, 185, 220, 0.55),   # ET  cyan
-            }
-            for label, (r, g, b, alpha) in SEG_COLORS.items():
-                mask = sl_seg.astype(np.int32) == label
-                if not mask.any():
-                    continue
-                rgb[mask, 0] = np.clip(rgb[mask, 0] * (1 - alpha) + r * alpha, 0, 255).astype(np.uint8)
-                rgb[mask, 1] = np.clip(rgb[mask, 1] * (1 - alpha) + g * alpha, 0, 255).astype(np.uint8)
-                rgb[mask, 2] = np.clip(rgb[mask, 2] * (1 - alpha) + b * alpha, 0, 255).astype(np.uint8)
-
-    # Resize to fixed canvas
-    TARGET = 480
-    if asp > 1:
-        new_h, new_w = int(TARGET * asp), TARGET
+            all_present = False
+            dims[view] = 0
+    if all_present and all(v > 0 for v in dims.values()):
+        _dim_cache[cache_key] = dims
     else:
-        new_h, new_w = TARGET, int(TARGET / max(asp, 0.1))
-
-    pil = Image.fromarray(rgb.astype(np.uint8))
-    pil = pil.resize((new_w, new_h), Image.LANCZOS)
-
-    buf = io.BytesIO()
-    pil.save(buf, format='PNG', optimize=True)
-    return buf.getvalue()
+        _dim_cache[cache_key] = None
+    return _dim_cache[cache_key]
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,9 +120,8 @@ def api_subject(pid: str):
     report   = load_json(subj_dir / 'report.json')
     qa       = load_json(subj_dir / 'qa.json')
 
-    # Check which NIfTI volumes are available for the slice viewer
-    reg_dir   = TEST_OUTPUTS / pid / 'registration'
-    has_nifti = (reg_dir / f'{pid}_T1_registered.nii.gz').exists()
+    # Check which pre-baked native slices are available for the slice viewer
+    has_nifti = _get_slice_dims(pid, '') is not None
 
     # Static images from data/ dir
     images = {}
@@ -206,10 +133,10 @@ def api_subject(pid: str):
         if fname and (subj_dir / fname).exists():
             images[key] = f'/image/{pid}/{fname}'
 
-    # Generated analysis viz from medgemma_reports/
-    viz_path = TEST_OUTPUTS / pid / 'medgemma_reports' / f'{pid}_analysis_viz.png'
+    # Generated analysis viz
+    viz_path = subj_dir / f'{pid}_analysis_viz.png'
     if viz_path.exists():
-        images['analysis_viz'] = f'/image_ext/{pid}/medgemma_reports/{pid}_analysis_viz.png'
+        images['analysis_viz'] = f'/image/{pid}/{pid}_analysis_viz.png'
 
     return jsonify({
         'pid':       pid,
@@ -317,37 +244,40 @@ def full_report(pid: str):
 
 @app.route('/api/slice_info/<pid>')
 def api_slice_info(pid: str):
-    """Return 3-D dimensions. ?space=native|registered (default: native)"""
-    from flask import request
+    """Return slice counts by reading pre-baked PNG directory structure.
+    ?space=native|registered (default: native)
+    """
     if pid not in SUBJECT_ORDER:
         return jsonify({'error': 'Subject not found'}), 404
 
-    space = request.args.get('space', 'native')
-    res   = _load_vol(pid, 't1', space)
-    if res is None:
-        return jsonify({'error': 'NIfTI not found'}), 404
+    space     = request.args.get('space', 'native')
+    subfolder = 'registered_brain' if space == 'registered' else ''
+    dims      = _get_slice_dims(pid, subfolder)
+    if dims is None:
+        return jsonify({'error': 'Pre-baked slices not found. Run prebake_slices.py first.'}), 404
 
-    arr, vox = res
+    axial    = dims['axial']
+    coronal  = dims['coronal']
+    sagittal = dims['sagittal']
     return jsonify({
-        'shape':           list(arr.shape),
-        'axial_slices':    arr.shape[2],
-        'coronal_slices':  arr.shape[1],
-        'sagittal_slices': arr.shape[0],
-        'mid_axial':       arr.shape[2] // 2,
-        'mid_coronal':     arr.shape[1] // 2,
-        'mid_sagittal':    arr.shape[0] // 2,
+        'shape':           [sagittal, coronal, axial],
+        'axial_slices':    axial,
+        'coronal_slices':  coronal,
+        'sagittal_slices': sagittal,
+        'mid_axial':       axial    // 2,
+        'mid_coronal':     coronal  // 2,
+        'mid_sagittal':    sagittal // 2,
     })
 
 
 @app.route('/api/slice/<pid>/<view>/<int:idx>')
 def api_slice(pid: str, view: str, idx: int):
-    """Serve a MRI slice as PNG.
-    Query params:
-      ?space=native|registered   (default: native)
-      ?seg=0|1                   (default: 1)
-      ?viz=multicolor|projection (default: multicolor)
+    """Serve a pre-baked MRI slice PNG directly from static/slices/.
+    Routes to the correct subfolder based on query params:
+      ?space=native (default) -> slices/<pid>/<view>/<idx>.png    (multicolor seg)
+      ?space=registered&seg=0 -> slices/<pid>/registered_brain/<view>/<idx>.png    (pure T1)
+      ?space=registered&viz=projection -> slices/<pid>/registered_projection/<view>/<idx>.png
     """
-    from flask import request
     if pid not in SUBJECT_ORDER:
         return 'Not found', 404
     if view not in ('axial', 'coronal', 'sagittal'):
@@ -357,34 +287,28 @@ def api_slice(pid: str, view: str, idx: int):
     show_seg     = request.args.get('seg',   '1') != '0'
     overlay_mode = request.args.get('viz',   'multicolor')
 
-    # 1. Check in-memory PNG cache first
-    cache_key = f"{pid}_{view}_{idx}_{space}_{show_seg}_{overlay_mode}"
-    if cache_key in _png_cache:
-        return Response(
-            _png_cache[cache_key],
-            mimetype='image/png',
-            headers={'Cache-Control': 'public, max-age=3600'},
-        )
+    # Determine which pre-baked subfolder to use
+    if space == 'registered':
+        if not show_seg:
+            subfolder = 'registered_brain'       # pure T1, no mask
+        else:
+            subfolder = 'registered_projection'  # green tumor projection
+    else:
+        subfolder = ''                            # native, multicolor seg
 
-    # 2. Cache miss: Load NIfTI and generate PNG
-    t1_res  = _load_vol(pid, 't1',  space)
-    seg_res = _load_vol(pid, 'seg', space) if show_seg else None
+    if subfolder:
+        png_path = SLICES_DIR / pid / subfolder / view / f'{idx}.png'
+    else:
+        png_path = SLICES_DIR / pid / view / f'{idx}.png'
 
-    if t1_res is None:
-        return 'NIfTI not found', 404
+    if not png_path.exists():
+        return f'Slice not found — run prebake_slices.py (subfolder: {subfolder or "native"})', 404
 
-    t1_arr, vox = t1_res
-    seg_arr     = seg_res[0] if seg_res else None
-
-    png_bytes = _render_slice(t1_arr, vox, seg_arr, view, idx, overlay_mode)
-    
-    # Save to RAM
-    _png_cache[cache_key] = png_bytes
-    
-    return Response(
-        png_bytes,
+    return send_from_directory(
+        png_path.parent,
+        png_path.name,
         mimetype='image/png',
-        headers={'Cache-Control': 'public, max-age=3600'},
+        max_age=86400,
     )
 
 
@@ -408,38 +332,33 @@ def serve_image(pid: str, filename: str):
     return send_from_directory(DATA_DIR / pid, filename)
 
 
-@app.route('/image_ext/<pid>/<path:subpath>')
-def serve_image_ext(pid: str, subpath: str):
-    """Serve generated images from test_outputs subdirectories."""
-    if pid not in SUBJECT_ORDER:
-        return 'Not found', 404
-    full = TEST_OUTPUTS / pid / subpath
-    if not full.exists():
-        return 'Not found', 404
-    return send_from_directory(full.parent, full.name)
+
 
 
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("  Webapp v3 -- Hardcoded Demo Mode")
+    print("  Webapp v4 -- Static Pre-Baked Demo Mode")
     print("  http://localhost:5001")
     print("=" * 60)
 
     ready = 0
     for pid in SUBJECT_ORDER:
-        meta_path = DATA_DIR / pid / 'metadata.json'
-        nifti_ok  = (TEST_OUTPUTS / pid / 'registration' / f'{pid}_T1_registered.nii.gz').exists()
-        tag       = '[OK]' if meta_path.exists() else '[MISS]'
-        nii_tag   = 'NIfTI:ok' if nifti_ok else 'NIfTI:missing'
-        print(f"  {tag} {pid}  ({nii_tag})")
+        meta_path  = DATA_DIR / pid / 'metadata.json'
+        dims       = _get_slice_dims(pid)
+        tag        = '[OK]'   if meta_path.exists() else '[MISS]'
+        bake_tag   = f'slices:baked({dims["axial"]}ax)' if dims else 'slices:NOT BAKED'
+        print(f"  {tag} {pid}  ({bake_tag})")
         if meta_path.exists():
             ready += 1
 
     print(f"\n  {ready}/{len(SUBJECT_ORDER)} subjects ready")
     if ready == 0:
-        print("\n  Run: python webapp_v3/prepare_v3_data.py --dry-run")
+        print("\n  Run: python webapp_v4/prepare_v3_data.py --dry-run")
+    if not any(_get_slice_dims(pid) for pid in SUBJECT_ORDER):
+        print("\n  !! No pre-baked slices found.")
+        print("  Run: python webapp_v4/prebake_slices.py")
     print("=" * 60 + "\n")
 
     app.run(host='0.0.0.0', port=5001, debug=False)
