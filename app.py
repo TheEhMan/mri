@@ -86,15 +86,17 @@ def load_json(path: Path) -> dict:
 
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
+
+
+
 @app.route('/')
+def demo():
+    return render_template('mri.html')
+
+
 @app.route('/mri-dashboard')
 def landing():
     return render_template('mri_dashboard.html')
-
-
-@app.route('/demo')
-def demo():
-    return render_template('index.html')
 
 
 # ─── API: subjects ────────────────────────────────────────────────────────────
