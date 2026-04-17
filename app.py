@@ -144,11 +144,14 @@ def api_subject(pid: str):
         ('registration', meta.get('reg_image')),
     ]:
         if fname and (subj_dir / fname).exists():
-            images[key] = f'/image/{pid}/{fname}'
+            # Use relative path (no leading slash) so the browser will request
+            # the image under the current prefix (works when the app is
+            # reverse proxied under a subpath such as /mri_demo/).
+            images[key] = f'image/{pid}/{fname}'
 
     viz_path = subj_dir / f'{pid}_analysis_viz.png'
     if viz_path.exists():
-        images['analysis_viz'] = f'/image/{pid}/{pid}_analysis_viz.png'
+        images['analysis_viz'] = f'image/{pid}/{pid}_analysis_viz.png'
 
     return jsonify({
         'pid': pid,
@@ -380,7 +383,8 @@ if __name__ == '__main__':
         meta_path = DATA_DIR / pid / 'metadata.json'
         dims = _get_slice_dims(pid)
         tag = '[OK]' if meta_path.exists() else '[MISS]'
-        bake_tag = f'slices:baked({dims['axial']}ax)' if dims else 'slices:NOT BAKED'
+        # dims may be None; when present refer safely to dims["axial"].
+        bake_tag = f'slices:baked({dims["axial"]}ax)' if dims else 'slices:NOT BAKED'
         print(f"  {tag} {pid}  ({bake_tag})")
         if meta_path.exists():
             ready += 1

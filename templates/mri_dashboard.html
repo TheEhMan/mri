@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="static/style.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css')[1:] }}" />
 </head>
 <body>
 
@@ -16,7 +16,7 @@
 <header class="app-header">
   <div class="header-brand">
     <div class="brand-icon">
-      <img src="static/artificial-intelligence.png" alt="Brain Icon" style="width: 28px; height: 28px; object-fit: contain;">
+  <img src="{{ url_for('static', filename='artificial-intelligence.png')[1:] }}" alt="Brain Icon" style="width: 28px; height: 28px; object-fit: contain;">
     </div>
     <div class="brand-text">
       <span class="brand-title">MedGemma MRI AI Insights</span>
@@ -331,6 +331,6 @@
   </section>
   <div class="creator-sig">JAMIL UR REZA</div>
   
-<script src="static/script.js"></script>
+<script src="{{ url_for('static', filename='script.js')[1:] }}"></script>
 </body>
 </html>

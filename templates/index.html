@@ -199,8 +199,9 @@
         <div class="badge-ai"><i class="fas fa-microchip mr-2"></i> Local Inference Pipeline</div>
         <h1>MedGemma MRI AI Insights</h1>
         <p>A transparent multimodal framework for brain tumor MRI analysis that combines dense native segmentation, deterministic atlas-based registration, and deep anatomical grounding with a vision-language model to support clinically meaningful visual interpretation.</p>
-        <a href="mri/demo" class="cta-btn"><i class="fas fa-play-circle"></i> Launch Live Dashboard</a>
+    <a href="{{ url_for('landing')[1:] }}" class="cta-btn"><i class="fas fa-play-circle"></i> Launch Live Dashboard</a>
     </section>
+   
 
     <div class="container-custom">
         <div class="glass-card">
@@ -243,7 +244,7 @@
             <div class="section-tag">System Visualization</div>
             <h2>System Flow Diagram</h2>
             <div class="diagram-container">
-                <img src="/static/assets/img/portfolio/mri/diagram_b.png" alt="MRI Pipeline Flow Architecture">
+                <img src="{{ url_for('static', filename='assets/img/portfolio/mri/diagram_b.png')[1:] }}" alt="MRI Pipeline Flow Architecture">
                 <p class="text-muted mt-4 mb-0" style="font-size: 0.95rem;">Figure 1. Architectural blueprint of the deterministic MedGemma multimodal pipeline infrastructure.</p>
             </div>
         </div>
@@ -259,7 +260,7 @@
                     <p>Navigate a localized clinical database of evaluated subjects, ranked immediately by AI confidence scores. Selecting a patient instantly surfaces their metadata, extracted deterministically rather than probabilistically. Following a rigorous Anatomical Atlas (AAL) grounding phase, the pipeline intersects the registered tumor mask with the atlas to calculate precise volumetric capacities across anatomical structures, such as the Temporal or Occipital Lobes. These deterministic features, including laterality and midline crossing, are compiled into a structured "Truth Anchor," serving as the immutable factual basis for all downstream analysis.</p>
                 </div>
                 <div class="feature-row-img">
-                    <img src="/static/demo1.png" alt="Dashboard Subject View">
+                    <img src="{{ url_for('static', filename='demo1.png')[1:] }}" alt="Dashboard Subject View">
                 </div>
             </div>
 
@@ -269,7 +270,7 @@
                     <p>Explore high-contrast NIfTI MRI slices dynamically while interacting with the constrained MedGemma 1.5 reasoning engine. The AI seamlessly interprets complex morphological characteristics (like necrotic cores and edema margins) by directly referencing deterministic pipeline outputs. To eliminate dangerous clinical hallucinations and multi-turn context drift, the interface employs a continuous state-aware loop known as the Anti-Amnesia protocol. By dynamically re-injecting the Truth Anchor into the model's context window at every conversational turn, the system maintains strict spatial fidelity throughout prolonged clinical inquiries.</p>
                 </div>
                 <div class="feature-row-img">
-                    <img src="/static/demo2.png" alt="Dashboard Native MRI Viewer and Chat">
+                    <img src="{{ url_for('static', filename='demo2.png')[1:] }}" alt="Dashboard Native MRI Viewer and Chat">
                 </div>
             </div>
 
