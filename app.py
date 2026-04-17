@@ -1,20 +1,18 @@
 """
 webapp_v4/app.py
-================
-Ultra-lean Flask backend for the static demo webapp.
-All MRI slices are pre-baked as static PNGs by prebake_slices.py.
-No NIfTI loading, no numpy, no Pillow — pure file serving.
+Complete Flask backend for the static demo webapp.
+Supports both /api/... and /mri/api/... routes.
 """
 
 import re
 import json
 from pathlib import Path
-from flask import Flask, jsonify, render_template, send_from_directory, Response, request
+from flask import Flask, jsonify, render_template, send_from_directory, request
 
 # ─── Paths ─────────────────────────────────────────────────────────────────────
-WEBAPP_DIR   = Path(__file__).parent.resolve()
-DATA_DIR     = WEBAPP_DIR / 'data'
-SLICES_DIR   = WEBAPP_DIR / 'static' / 'slices'   # pre-baked PNG store
+WEBAPP_DIR = Path(__file__).parent.resolve()
+DATA_DIR = WEBAPP_DIR / 'data'
+SLICES_DIR = WEBAPP_DIR / 'static' / 'slices'   # pre-baked PNG store
 
 app = Flask(
     __name__,
@@ -31,6 +29,7 @@ SUBJECT_ORDER = [
     'UCSF-PDGM-0249',
     'UCSF-PDGM-0044',
 ]
+
 ACCURACY_MAP = {
     'UCSF-PDGM-0254': 91.2,
     'UCSF-PDGM-0096': 91.2,
@@ -39,37 +38,42 @@ ACCURACY_MAP = {
     'UCSF-PDGM-0044': 88.2,
 }
 
-# ─── Slice dimension cache (read from baked folder, zero NIfTI I/O) ──────────────────
-_dim_cache: dict = {}
+# ─── Slice dimension cache ─────────────────────────────────────────────────────
+_dim_cache = {}
 
 
 def _get_slice_dims(pid: str, subfolder: str = ''):
-    """Count pre-baked PNGs to determine volume dimensions for a given subfolder.
-    subfolder=''                  -> native space (slices/<pid>/<view>/)
-    subfolder='registered_brain'  -> registered pure T1
-    subfolder='registered_projection' -> registered + green overlay
-    Returns dict with axial/coronal/sagittal slice counts, or None if not baked.
+    """
+    Count pre-baked PNGs to determine volume dimensions for a given subfolder.
+    subfolder=''                       -> native space
+    subfolder='registered_brain'       -> registered pure T1
+    subfolder='registered_projection'  -> registered + green overlay
     """
     cache_key = f'{pid}/{subfolder}'
     if cache_key in _dim_cache:
         return _dim_cache[cache_key]
+
     dims = {}
     all_present = True
+
     for view in ('axial', 'coronal', 'sagittal'):
         if subfolder:
             view_dir = SLICES_DIR / pid / subfolder / view
         else:
             view_dir = SLICES_DIR / pid / view
+
         if view_dir.exists():
             count = len(list(view_dir.glob('*.png')))
             dims[view] = count
         else:
             all_present = False
             dims[view] = 0
+
     if all_present and all(v > 0 for v in dims.values()):
         _dim_cache[cache_key] = dims
     else:
         _dim_cache[cache_key] = None
+
     return _dim_cache[cache_key]
 
 
@@ -81,74 +85,84 @@ def load_json(path: Path) -> dict:
     return {}
 
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+# ─── Pages ────────────────────────────────────────────────────────────────────
 @app.route('/')
+@app.route('/mri-dashboard')
 def landing():
-    # Serve the newly provided informational landing page
-    return render_template('mri.html')
+    return render_template('mri_dashboard.html')
+
 
 @app.route('/demo')
 def demo():
-    # Serve the actual MedGemma AI interactive dashboard
     return render_template('index.html')
 
 
+# ─── API: subjects ────────────────────────────────────────────────────────────
 @app.route('/api/subjects')
+@app.route('/api/subjects/')
+@app.route('/mri/api/subjects')
+@app.route('/mri/api/subjects/')
 def api_subjects():
     subjects = []
     for pid in SUBJECT_ORDER:
         meta_path = DATA_DIR / pid / 'metadata.json'
-        meta      = load_json(meta_path)
+        meta = load_json(meta_path)
+
         subjects.append({
-            'pid':          pid,
-            'accuracy':     ACCURACY_MAP.get(pid, 0),
-            'ready':        meta_path.exists(),
+            'pid': pid,
+            'accuracy': ACCURACY_MAP.get(pid, 0),
+            'ready': meta_path.exists(),
             'total_volume': meta.get('total_volume_ml', '—'),
-            'hemisphere':   meta.get('hemisphere', '—').capitalize(),
+            'hemisphere': meta.get('hemisphere', '—').capitalize(),
             'primary_lobe': meta.get('primary_lobe', '—'),
         })
     return jsonify(subjects)
 
 
+# ─── API: subject details ─────────────────────────────────────────────────────
 @app.route('/api/subject/<pid>')
+@app.route('/api/subject/<pid>/')
+@app.route('/mri/api/subject/<pid>')
+@app.route('/mri/api/subject/<pid>/')
 def api_subject(pid: str):
     if pid not in SUBJECT_ORDER:
         return jsonify({'error': 'Subject not found'}), 404
 
     subj_dir = DATA_DIR / pid
-    meta     = load_json(subj_dir / 'metadata.json')
-    report   = load_json(subj_dir / 'report.json')
-    qa       = load_json(subj_dir / 'qa.json')
+    meta = load_json(subj_dir / 'metadata.json')
+    report = load_json(subj_dir / 'report.json')
+    qa = load_json(subj_dir / 'qa.json')
 
-    # Check which pre-baked native slices are available for the slice viewer
     has_nifti = _get_slice_dims(pid, '') is not None
 
-    # Static images from data/ dir
     images = {}
     for key, fname in [
-        ('orthoview',    meta.get('orthoview_image')),
+        ('orthoview', meta.get('orthoview_image')),
         ('segmentation', meta.get('seg_image')),
         ('registration', meta.get('reg_image')),
     ]:
         if fname and (subj_dir / fname).exists():
             images[key] = f'/image/{pid}/{fname}'
 
-    # Generated analysis viz
     viz_path = subj_dir / f'{pid}_analysis_viz.png'
     if viz_path.exists():
         images['analysis_viz'] = f'/image/{pid}/{pid}_analysis_viz.png'
 
     return jsonify({
-        'pid':       pid,
-        'meta':      meta,
-        'report':    report,
-        'qa':        qa,
-        'images':    images,
+        'pid': pid,
+        'meta': meta,
+        'report': report,
+        'qa': qa,
+        'images': images,
         'has_nifti': has_nifti,
     })
 
 
+# ─── Report ───────────────────────────────────────────────────────────────────
 @app.route('/report/<pid>')
+@app.route('/report/<pid>/')
+@app.route('/mri/report/<pid>')
+@app.route('/mri/report/<pid>/')
 def full_report(pid: str):
     if pid not in SUBJECT_ORDER:
         return "Subject not found", 404
@@ -156,20 +170,20 @@ def full_report(pid: str):
     import datetime
     import html
 
-    # Safe text escape
-    def esc(s): return html.escape(str(s)).replace('{','&#123;').replace('}','&#125;')
-    def esc_raw(s): return html.escape(str(s))
+    def esc(s):
+        return html.escape(str(s)).replace('{', '&#123;').replace('}', '&#125;')
+
+    def esc_raw(s):
+        return html.escape(str(s))
 
     subj_dir = DATA_DIR / pid
-    meta     = load_json(subj_dir / 'metadata.json')
-    report   = load_json(subj_dir / 'report.json')
+    meta = load_json(subj_dir / 'metadata.json')
+    report = load_json(subj_dir / 'report.json')
 
-    # Build region rows
     region_rows = ""
     for reg, vol in meta.get('top_regions', []):
         region_rows += f"<tr><td>{esc_raw(reg)}</td><td>{vol:.2f}</td></tr>\n"
 
-    # Default date if not available
     exam_date = datetime.date.today().strftime("%B %d, %Y")
 
     report_html = f"""
@@ -215,7 +229,7 @@ def full_report(pid: str):
             <thead><tr><th>Region (AAL Atlas)</th><th>Overlap Volume (mL)</th></tr></thead>
             <tbody>{region_rows}</tbody>
         </table>
-        
+
         <h2>2. Morphological Characteristic Assessment</h2>
         <div class="assessment-section"><div class="assessment-content">
             <p>{esc(report.get('morphology', 'No data available.'))}</p>
@@ -241,60 +255,73 @@ def full_report(pid: str):
     return report_html
 
 
-
+# ─── API: slice info ──────────────────────────────────────────────────────────
 @app.route('/api/slice_info/<pid>')
+@app.route('/api/slice_info/<pid>/')
+@app.route('/mri/api/slice_info/<pid>')
+@app.route('/mri/api/slice_info/<pid>/')
 def api_slice_info(pid: str):
-    """Return slice counts by reading pre-baked PNG directory structure.
-    ?space=native|registered (default: native)
+    """
+    Return slice counts from the pre-baked PNG directory structure.
+    ?space=native|registered
     """
     if pid not in SUBJECT_ORDER:
         return jsonify({'error': 'Subject not found'}), 404
 
-    space     = request.args.get('space', 'native')
+    space = request.args.get('space', 'native')
     subfolder = 'registered_brain' if space == 'registered' else ''
-    dims      = _get_slice_dims(pid, subfolder)
+    dims = _get_slice_dims(pid, subfolder)
+
     if dims is None:
         return jsonify({'error': 'Pre-baked slices not found. Run prebake_slices.py first.'}), 404
 
-    axial    = dims['axial']
-    coronal  = dims['coronal']
+    axial = dims['axial']
+    coronal = dims['coronal']
     sagittal = dims['sagittal']
+
     return jsonify({
-        'shape':           [sagittal, coronal, axial],
-        'axial_slices':    axial,
-        'coronal_slices':  coronal,
+        'shape': [sagittal, coronal, axial],
+        'axial_slices': axial,
+        'coronal_slices': coronal,
         'sagittal_slices': sagittal,
-        'mid_axial':       axial    // 2,
-        'mid_coronal':     coronal  // 2,
-        'mid_sagittal':    sagittal // 2,
+        'mid_axial': axial // 2,
+        'mid_coronal': coronal // 2,
+        'mid_sagittal': sagittal // 2,
     })
 
 
+# ─── API: slice image ─────────────────────────────────────────────────────────
 @app.route('/api/slice/<pid>/<view>/<int:idx>')
+@app.route('/api/slice/<pid>/<view>/<int:idx>/')
+@app.route('/mri/api/slice/<pid>/<view>/<int:idx>')
+@app.route('/mri/api/slice/<pid>/<view>/<int:idx>/')
 def api_slice(pid: str, view: str, idx: int):
-    """Serve a pre-baked MRI slice PNG directly from static/slices/.
-    Routes to the correct subfolder based on query params:
-      ?space=native (default) -> slices/<pid>/<view>/<idx>.png    (multicolor seg)
-      ?space=registered&seg=0 -> slices/<pid>/registered_brain/<view>/<idx>.png    (pure T1)
-      ?space=registered&viz=projection -> slices/<pid>/registered_projection/<view>/<idx>.png
+    """
+    Serve a pre-baked MRI slice PNG directly from static/slices/.
+    Query params:
+      ?space=native|registered
+      ?seg=0|1
+      ?viz=multicolor|projection
     """
     if pid not in SUBJECT_ORDER:
         return 'Not found', 404
     if view not in ('axial', 'coronal', 'sagittal'):
         return 'Bad view', 400
 
-    space        = request.args.get('space', 'native')
-    show_seg     = request.args.get('seg',   '1') != '0'
-    overlay_mode = request.args.get('viz',   'multicolor')
+    space = request.args.get('space', 'native')
+    show_seg = request.args.get('seg', '1') != '0'
+    overlay_mode = request.args.get('viz', 'multicolor')
 
-    # Determine which pre-baked subfolder to use
     if space == 'registered':
         if not show_seg:
-            subfolder = 'registered_brain'       # pure T1, no mask
+            subfolder = 'registered_brain'
         else:
-            subfolder = 'registered_projection'  # green tumor projection
+            if overlay_mode == 'projection':
+                subfolder = 'registered_projection'
+            else:
+                subfolder = 'registered_projection'
     else:
-        subfolder = ''                            # native, multicolor seg
+        subfolder = ''
 
     if subfolder:
         png_path = SLICES_DIR / pid / subfolder / view / f'{idx}.png'
@@ -312,17 +339,24 @@ def api_slice(pid: str, view: str, idx: int):
     )
 
 
+# ─── API: QA ──────────────────────────────────────────────────────────────────
 @app.route('/api/qa/<pid>/<q_id>')
+@app.route('/api/qa/<pid>/<q_id>/')
+@app.route('/mri/api/qa/<pid>/<q_id>')
+@app.route('/mri/api/qa/<pid>/<q_id>/')
 def api_qa(pid: str, q_id: str):
     if pid not in SUBJECT_ORDER:
         return jsonify({'error': 'Subject not found'}), 404
-    qa     = load_json(DATA_DIR / pid / 'qa.json')
+
+    qa = load_json(DATA_DIR / pid / 'qa.json')
     answer = qa.get(q_id)
     if answer is None:
         return jsonify({'error': f'Question {q_id} not found'}), 404
+
     return jsonify({'pid': pid, 'q_id': q_id, 'answer': answer})
 
 
+# ─── Image serving ────────────────────────────────────────────────────────────
 @app.route('/image/<pid>/<filename>')
 def serve_image(pid: str, filename: str):
     if pid not in SUBJECT_ORDER:
@@ -330,10 +364,6 @@ def serve_image(pid: str, filename: str):
     if not re.match(r'^[\w\-\.]+$', filename):
         return 'Forbidden', 403
     return send_from_directory(DATA_DIR / pid, filename)
-
-
-
-
 
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
@@ -345,20 +375,20 @@ if __name__ == '__main__':
 
     ready = 0
     for pid in SUBJECT_ORDER:
-        meta_path  = DATA_DIR / pid / 'metadata.json'
-        dims       = _get_slice_dims(pid)
-        tag        = '[OK]'   if meta_path.exists() else '[MISS]'
-        bake_tag   = f'slices:baked({dims["axial"]}ax)' if dims else 'slices:NOT BAKED'
+        meta_path = DATA_DIR / pid / 'metadata.json'
+        dims = _get_slice_dims(pid)
+        tag = '[OK]' if meta_path.exists() else '[MISS]'
+        bake_tag = f'slices:baked({dims['axial']}ax)' if dims else 'slices:NOT BAKED'
         print(f"  {tag} {pid}  ({bake_tag})")
         if meta_path.exists():
             ready += 1
 
     print(f"\n  {ready}/{len(SUBJECT_ORDER)} subjects ready")
     if ready == 0:
-        print("\n  Run: python webapp_v4/prepare_v3_data.py --dry-run")
+        print("\n  Run: python prepare_v3_data.py --dry-run")
     if not any(_get_slice_dims(pid) for pid in SUBJECT_ORDER):
         print("\n  !! No pre-baked slices found.")
-        print("  Run: python webapp_v4/prebake_slices.py")
+        print("  Run: python prebake_slices.py")
     print("=" * 60 + "\n")
 
     app.run(host='0.0.0.0', port=5001, debug=False)
