@@ -371,6 +371,12 @@ def serve_image(pid: str, filename: str):
     return send_from_directory(DATA_DIR / pid, filename)
 
 
+# Temporary probe route for debugging (returns 200 if app is alive).
+@app.route('/probe')
+def probe():
+    return jsonify({'status': 'ok'}), 200
+
+
 # ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     print("\n" + "=" * 60)
