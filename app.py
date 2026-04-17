@@ -91,10 +91,10 @@ def load_json(path: Path) -> dict:
 
 @app.route('/')
 def demo():
-    return render_template('mri.html')
+    return render_template('index.html')
 
 
-@app.route('/mri-dashboard')
+@app.route('/mri_dashboard')
 def landing():
     return render_template('mri_dashboard.html')
 
